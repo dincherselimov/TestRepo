@@ -1,0 +1,88 @@
+<?php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
+use League\Csv\Reader;
+use App\Models\JobTaskModel; 
+
+class import_file extends Command
+{
+    protected $signature = 'job_task:import_file {path_to_file}';
+    protected $description = 'Parse and display data from a fixed-width text file';
+
+    public function __construct()
+    {
+        parent::__construct();
+    }
+
+    public function handle()
+    {
+        $pathToFile = $this->argument('path_to_file');
+
+        if (!File::exists($pathToFile)) {
+            $this->error("File not found at '{$pathToFile}'");
+            return 1;
+        }
+
+        $file = fopen($pathToFile, 'r');
+
+        if ($file) {
+            // Load CSV file with fixed-width schemes
+            $csvFilePath = storage_path('files/import_file_specs.csv');
+            $csv = Reader::createFromPath($csvFilePath, 'r');
+            $csv->setHeaderOffset(0);
+
+            // Build an associative array to store schemes for each record_type
+            $fixedWidthSchemes = [];
+
+            foreach ($csv as $row) {
+                $recordType = $row['record_type'];
+                $scheme = [
+                    'Start' => (int)$row['start_range'],
+                    'End' => (int)$row['end_range'],
+                ];
+
+                // Check if the record_type already exists in the schemes array
+                if (!isset($fixedWidthSchemes[$recordType])) {
+                    $fixedWidthSchemes[$recordType] = [];
+                }
+
+                // Append the scheme to the array
+                $fixedWidthSchemes[$recordType][] = $scheme;
+            }
+
+            while (($line = fgets($file)) !== false) {
+                $recordType = substr($line, 17, 2);
+
+                // Check if the Record Type has schemes
+                if (isset($fixedWidthSchemes[$recordType])) {
+                    // Iterate through the schemes for this record_type
+                    foreach ($fixedWidthSchemes[$recordType] as $scheme) {
+                        $start = $scheme['Start'];
+                        $end = $scheme['End'];
+
+                        // Extract data based on the scheme
+                        $recordData = substr($line, $start - 1, $end - $start + 1);
+
+                        // Create a new JobTask model instance and set the data
+                        $jobTask = new jobTaskModel();
+                        $jobTask->record_type = $recordType;
+                        $jobTask->scheme = json_encode($scheme);
+                        $jobTask->extracted_data = $recordData;
+
+                        // Save the model to the database
+                        $jobTask->save();
+                    }
+                } else {
+                    // Handle the case where there are no schemes for the Record Type
+                    $this->error("Record Type: $recordType");
+                    $this->error("Scheme not found for this Record Type.");
+                }
+            }
+
+            fclose($file); // Close the file when you're done reading
+        }
+    }
+}
