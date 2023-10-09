@@ -1,0 +1,19 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class jobTaskModel extends Model
+{
+    protected $table = 'jobtask'; // Set the table name
+
+    protected $fillable = [
+        'record_type',
+        'scheme',
+        'extracted_data',
+    ];
+
+}
+
+
